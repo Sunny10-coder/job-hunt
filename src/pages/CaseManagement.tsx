@@ -1,10 +1,11 @@
-import { ArchiveRestore, Copy, Download, FileCheck2, KeyRound, Save, ShieldCheck } from "lucide-react";
+import { ArchiveRestore, Copy, Download, FileCheck2, FolderOpen, KeyRound, Save, ShieldCheck } from "lucide-react";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, Button, EmptyState, ErrorState, Field, Input, Panel, Spinner, Tabs, Textarea } from "@/components/ui/primitives";
 import { apiUrl, get, patch, post } from "@/lib/api";
+import { isDesktop, revealPath } from "@/lib/native";
 import { bytes, dateTime, num } from "@/lib/format";
 import { useApi } from "@/hooks/useApi";
 import { useCase } from "@/hooks/useCaseContext";
@@ -336,6 +337,16 @@ export function CaseManagement() {
               <p className="text-teal">Backup written</p>
               <p className="mono mt-1 break-all text-[10.5px] text-ink">{backupResult.path}</p>
               <p className="mono mt-1 break-all text-[10px] text-muted">sha256 {backupResult.sha256}</p>
+              {isDesktop() ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2"
+                  onClick={() => void revealPath(backupResult.path).then((ok) => { if (!ok) toast({ title: "Could not open the backup folder", tone: "error" }); })}
+                >
+                  <FolderOpen className="h-3 w-3" /> Show in folder
+                </Button>
+              ) : null}
             </div>
           ) : null}
           <p className="text-[10.5px] leading-relaxed text-muted">

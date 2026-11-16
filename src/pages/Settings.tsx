@@ -1,9 +1,10 @@
-import { CheckCircle2, Cpu, Database, HardDrive, ShieldCheck, Sparkles } from "lucide-react";
+import { CheckCircle2, Cpu, Database, HardDrive, KeyRound, RotateCw, ShieldCheck, Sparkles } from "lucide-react";
 import * as React from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge, Button, EmptyState, ErrorState, Field, Input, Panel, Select, Spinner, Switch, Tabs } from "@/components/ui/primitives";
 import { get, patch } from "@/lib/api";
 import { bytes, num } from "@/lib/format";
+import { clearApiKey, hasStoredApiKey, isDesktop, restartEngine, saveApiKey } from "@/lib/native";
 import { useApi } from "@/hooks/useApi";
 import { useApp } from "@/stores/app";
 import type { Settings } from "@/types";
@@ -37,8 +38,64 @@ export function SettingsPage() {
   const toast = useApp((state) => state.toast);
   const [tab, setTab] = React.useState<Tab>("appearance");
   const [busy, setBusy] = React.useState(false);
+  const [apiKey, setApiKey] = React.useState("");
+  const [keyStored, setKeyStored] = React.useState(false);
+  const [keyBusy, setKeyBusy] = React.useState(false);
   const diagApi = useApi<Diagnostics>("/api/diagnostics");
   const aiApi = useApi<{ ok: boolean; provider: string | null; models: string[]; error?: string; hint?: string; external?: boolean }>("/api/ai/status");
+
+  React.useEffect(() => {
+    void hasStoredApiKey().then(setKeyStored);
+  }, []);
+
+  const restart = async () => {
+    setBusy(true);
+    try {
+      const info = await restartEngine();
+      diagApi.reload();
+      toast({
+        title: "Forensic engine restarted",
+        description: info ? `now serving on 127.0.0.1:${info.port}` : "desktop application only",
+        tone: "success",
+      });
+    } catch (err) {
+      toast({ title: "Engine restart failed", description: (err as Error).message, tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveKey = async () => {
+    setKeyBusy(true);
+    try {
+      await saveApiKey(apiKey.trim());
+      setApiKey("");
+      setKeyStored(true);
+      // The engine reads the key from its environment, so restart to apply it.
+      await restartEngine();
+      diagApi.reload();
+      toast({ title: "API key stored in the OS credential vault", description: "The engine was restarted with the key.", tone: "success" });
+    } catch (err) {
+      toast({ title: "Could not store the API key", description: (err as Error).message, tone: "error" });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const clearKey = async () => {
+    setKeyBusy(true);
+    try {
+      await clearApiKey();
+      setKeyStored(false);
+      await restartEngine();
+      diagApi.reload();
+      toast({ title: "API key removed", tone: "success" });
+    } catch (err) {
+      toast({ title: "Could not remove the API key", description: (err as Error).message, tone: "error" });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
 
   const update = async (values: Partial<Settings>) => {
     patchSettings(values);
@@ -208,10 +265,40 @@ export function SettingsPage() {
                 <Field label="Base URL">
                   <Input value={settings.ai_external_base_url} placeholder="https://api.example.com/v1" onChange={(event) => void update({ ai_external_base_url: event.target.value })} />
                 </Field>
-                <div className="rounded-lg border border-amber/30 bg-amber/8 p-2 text-[10.5px] leading-relaxed text-amber">
-                  API keys are stored by the operating-system credential vault, never in project files or the
-                  database. In the browser preview, keys are only read from the environment.
-                </div>
+                {isDesktop() ? (
+                  <div className="space-y-2 rounded-lg border border-line bg-elevated/50 p-2">
+                    <Field
+                      label="Provider API key"
+                      hint={keyStored ? "stored in the OS credential vault" : "not stored"}
+                    >
+                      <Input
+                        type="password"
+                        autoComplete="off"
+                        value={apiKey}
+                        placeholder={keyStored ? "•••••• stored — paste a new key to replace" : "paste the provider key"}
+                        onChange={(event) => setApiKey(event.target.value)}
+                      />
+                    </Field>
+                    <div className="flex gap-2">
+                      <Button size="sm" loading={keyBusy} disabled={!apiKey.trim()} onClick={() => void saveKey()}>
+                        <KeyRound className="h-3 w-3" /> Store key
+                      </Button>
+                      <Button size="sm" variant="ghost" loading={keyBusy} disabled={!keyStored} onClick={() => void clearKey()}>
+                        Remove key
+                      </Button>
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-muted">
+                      The key is written to the Windows Credential Manager through the desktop shell, never to the
+                      database, a settings file or a log. The engine is restarted so it can read the key from its
+                      own environment.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-amber/30 bg-amber/8 p-2 text-[10.5px] leading-relaxed text-amber">
+                    In this browser preview the engine can only read a key from <span className="mono">OPENAI_API_KEY</span>.
+                    Run the desktop application to store a key in the operating-system credential vault.
+                  </div>
+                )}
                 <div className="rounded-lg border border-line bg-elevated/50 p-2 text-[10.5px] text-muted">
                   {aiApi.data?.ok ? (
                     <span className="flex items-center gap-1 text-teal"><CheckCircle2 className="h-3 w-3" /> {aiApi.data.provider} reachable · {aiApi.data.models.length} models</span>
@@ -270,7 +357,17 @@ export function SettingsPage() {
 
         {settings && tab === "diagnostics" ? (
           <div className="grid gap-3 lg:grid-cols-2">
-            <Panel title="Engine" actions={<Button size="sm" variant="ghost" onClick={diagApi.reload}>Refresh</Button>}>
+            <Panel
+              title="Engine"
+              actions={
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" disabled={!isDesktop() || busy} onClick={() => void restart()}>
+                    <RotateCw className="h-3 w-3" /> Restart
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={diagApi.reload}>Refresh</Button>
+                </div>
+              }
+            >
               {diagApi.loading ? <Spinner /> : null}
               {diagApi.error ? <ErrorState error={diagApi.error} onRetry={diagApi.reload} /> : null}
               {diagApi.data ? (

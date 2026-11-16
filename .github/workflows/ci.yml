@@ -75,6 +75,10 @@ jobs:
       - name: Freeze the Python sidecar
         shell: bash
         run: ./scripts/build_sidecar.sh x86_64-pc-windows-msvc
+      - name: Check Rust sources
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo check --manifest-path src-tauri/Cargo.toml --locked
       - name: Build application and installers
         run: npm run tauri:build -- --target x86_64-pc-windows-msvc
       - name: Smoke-test the frozen engine (migrations, auth, health)
@@ -112,8 +116,10 @@ jobs:
               if ($status -eq 401) { $rejected = $true }
             }
             if (-not $rejected) { throw "engine health check accepted an unauthenticated request" }
-            $db = Join-Path $env:WFS_DATA_DIR "wfs.db"
-            if (-not (Test-Path $db)) { throw "the frozen engine did not create its database" }
+            # The engine stores everything in app.db (see wfs_engine/config.py).
+            $db = Join-Path $env:WFS_DATA_DIR "app.db"
+            if (-not (Test-Path $db)) { throw "the frozen engine did not create its database at $db" }
+            if ((Get-Item $db).Length -le 0) { throw "the engine database is empty" }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }

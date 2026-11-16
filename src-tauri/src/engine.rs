@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use rand::RngCore;
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineInfo {
@@ -24,11 +24,18 @@ pub struct EngineInfo {
 }
 
 pub struct EngineState {
-    pub info: EngineInfo,
+    info: Mutex<EngineInfo>,
     child: Mutex<Option<Child>>,
 }
 
 impl EngineState {
+    pub fn info(&self) -> Result<EngineInfo, String> {
+        self.info
+            .lock()
+            .map(|guard| guard.clone())
+            .map_err(|_| "engine state poisoned".to_string())
+    }
+
     pub fn shutdown(&self) {
         if let Ok(mut guard) = self.child.lock() {
             if let Some(mut child) = guard.take() {
@@ -38,25 +45,64 @@ impl EngineState {
         }
     }
 
-    pub fn restart(&self) -> Result<(), String> {
-        self.shutdown();
-        let child = spawn_process(&self.info.port, &self.info.token)?;
-        *self.child.lock().map_err(|_| "engine state poisoned".to_string())? = Some(child);
-        Ok(())
+    /// Start a replacement engine on a fresh port *before* stopping the old one.
+    ///
+    /// The previous implementation killed the running engine first and then
+    /// reused its port, so a failed restart left the examiner with no engine at
+    /// all. Now a failure returns an error while the original engine keeps
+    /// serving, and only a readiness-checked replacement is published.
+    pub fn restart(&self) -> Result<EngineInfo, String> {
+        let token = self
+            .info
+            .lock()
+            .map_err(|_| "engine state poisoned".to_string())?
+            .token
+            .clone();
+        let port = free_port().map_err(|err| err.to_string())?;
+        let mut child = spawn_process(port, &token)?;
+        if !wait_until_ready(port, &token, Duration::from_secs(45)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "the restarted engine on port {port} never answered /api/health; the previous engine is still running"
+            ));
+        }
+        let info = EngineInfo {
+            base_url: format!("http://127.0.0.1:{port}"),
+            token,
+            port,
+        };
+        if let Some(mut previous) = self
+            .child
+            .lock()
+            .map_err(|_| "engine state poisoned".to_string())?
+            .take()
+        {
+            let _ = previous.kill();
+            let _ = previous.wait();
+        }
+        *self
+            .info
+            .lock()
+            .map_err(|_| "engine state poisoned".to_string())? = info.clone();
+        *self
+            .child
+            .lock()
+            .map_err(|_| "engine state poisoned".to_string())? = Some(child);
+        Ok(info)
     }
 }
 
 /// Create the data/log directories, start the engine and wait until it answers.
-pub fn bootstrap(app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Error>> {
-    let data_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|err| format!("cannot resolve the application data directory: {err}"))?;
+///
+/// One canonical directory is used by the shell, the UI and the engine. The
+/// shell previously created its folders under Tauri's app-data key while the
+/// engine received a *different* `WFS_DATA_DIR`, so cases and logs could end up
+/// in two places. `data_dir()` is now the only source of truth.
+pub fn bootstrap(_app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Error>> {
+    let data_root = data_dir()?;
     let cases_root = data_root.join("cases");
-    let log_root = app
-        .path()
-        .app_log_dir()
-        .unwrap_or_else(|_| data_root.join("logs"));
+    let log_root = data_root.join("logs");
     for dir in [&cases_root, &log_root] {
         std::fs::create_dir_all(dir)?;
     }
@@ -66,7 +112,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Err
 
     for _ in 0..3 {
         let port = free_port()?;
-        match spawn_process(&port, &token) {
+        match spawn_process(port, &token) {
             Ok(mut child) => {
                 if wait_until_ready(port, &token, Duration::from_secs(45)) {
                     let info = EngineInfo {
@@ -75,7 +121,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Err
                         port,
                     };
                     return Ok(EngineState {
-                        info,
+                        info: Mutex::new(info),
                         child: Mutex::new(Some(child)),
                     });
                 }
@@ -89,6 +135,21 @@ pub fn bootstrap(app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Err
         }
     }
     Err(last_error.into())
+}
+
+const KEYRING_SERVICE: &str = "whatsapp-forensic-studio";
+const API_KEY_ACCOUNT: &str = "ai-api-key";
+
+/// Read the external AI key from the operating-system credential store.
+///
+/// The key is never written to disk, logs or the command line; only the engine
+/// child process receives it, through its environment.
+fn stored_api_key() -> Option<String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, API_KEY_ACCOUNT).ok()?;
+    match entry.get_password() {
+        Ok(value) if !value.trim().is_empty() => Some(value),
+        _ => None,
+    }
 }
 
 fn session_token() -> String {
@@ -161,6 +222,14 @@ fn spawn_process(port: u16, token: &str) -> Result<Child, String> {
         .map_err(|err| format!("cannot open {}: {err}", log_path.display()))?;
     let log_err = log.try_clone().map_err(|err| err.to_string())?;
 
+    // Optional external-provider key: the UI stores it in the OS credential
+    // store (never the database or a file), and the engine receives it through
+    // the environment of its own process. A missing keyring or entry is normal
+    // in development and on machines that never enabled an external provider.
+    if let Some(key) = stored_api_key() {
+        command.env("OPENAI_API_KEY", key);
+    }
+
     command
         .arg("--host")
         .arg("127.0.0.1")
@@ -178,7 +247,7 @@ fn spawn_process(port: u16, token: &str) -> Result<Child, String> {
         .map_err(|err| format!("could not start the forensic engine: {err}"))
 }
 
-fn data_dir() -> Result<PathBuf, String> {
+pub fn data_dir() -> Result<PathBuf, String> {
     if let Ok(value) = std::env::var("WFS_DATA_DIR") {
         return Ok(PathBuf::from(value));
     }

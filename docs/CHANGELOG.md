@@ -3,7 +3,59 @@
 All verification steps below were executed in the development sandbox except
 where explicitly marked as requiring Windows.
 
-## 1.0.1 — repair round
+## Unreleased — Rust shell repair
+
+### Rust shell
+
+* **The desktop shell had never compiled.** `engine.rs` called
+  `spawn_process(&port, ...)` with a `u16` reference, and both call sites failed
+  with `E0308`. Fixed in bootstrap and restart. `cargo check` on the Windows
+  target now finishes with no crate warnings.
+* **Missing `rfd` dependency.** `commands.rs` used `rfd::FileDialog` for the
+  native evidence, folder and save pickers, but `rfd` was absent from
+  `Cargo.toml`, so the crate could not build. Added `rfd = "0.15"`.
+* **Unused privileges removed.** `tauri-plugin-dialog`, `tauri-plugin-opener`
+  and `tauri-plugin-shell` were dependencies that were never registered or
+  called (native dialogs use `rfd` directly, and revealing a path uses the
+  dedicated `open_path` command). The crates and their capability permissions
+  (`dialog:default`, `opener:*`) are gone; the capability set is now `core:default`
+  plus window title only.
+* **Two data directories.** The shell created cases/logs under Tauri's
+  app-data key while passing a different `WFS_DATA_DIR` to the engine, so
+  Diagnostics and the filesystem could disagree. `engine::data_dir()` is now the
+  single source of truth for the cases folder, logs, the engine environment and
+  `app_info`.
+* **Restart could leave the examiner with no engine.** The old code killed the
+  running engine first and reused its port. It now starts a replacement on a
+  fresh port, waits for its authenticated health check, and only then stops the
+  previous process; a failed restart returns an error and leaves the running
+  engine serving.
+* **Credential store is now functional end to end.** Settings → AI can store or
+  remove the external-provider key through `save_secret`/`delete_secret`; the
+  shell reads it from the OS credential store at spawn time and passes it to the
+  engine in its environment only (never argv, disk, database or logs). The UI
+  also calls `restart_engine` after changing the key, and reveals generated
+  reports and backups with `open_path`.
+* **CI smoke test used the wrong database.** The engine writes `app.db`
+  (`config.db_path()`), not `wfs.db`; the Windows workflow now verifies
+  `app.db` exists and is non-empty, and also runs `cargo fmt --check` and
+  `cargo check --locked` before building the installers. `src-tauri/Cargo.lock`
+  is committed for reproducible builds.
+
+### Verification for this round
+
+* `rustc 1.100.0` / `cargo 1.100.0` installed with rustup in the sandbox.
+* `cargo check --target x86_64-pc-windows-msvc` — **passes**, no warnings from
+  the crate. `cargo fmt --check` — clean.
+* `npx tsc --noEmit` and `npm run build` — pass.
+* `PYTHONPATH=. python -m pytest -q` — 172 passed, 1 skipped.
+* The Linux host target cannot be checked here: no root, so `libglib2.0-dev`,
+  `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` cannot be installed. The Windows
+  target check needed a stand-in `llvm-rc` for `tauri-winres` resource embedding
+  only; rustc type-checked the crate for the real target. A genuine link and
+  installer build still requires CI's `windows-latest`.
+
+## Unreleased — repair round
 
 ### Startup and packaging
 

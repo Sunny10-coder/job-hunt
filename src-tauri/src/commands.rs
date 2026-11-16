@@ -5,12 +5,12 @@
 //! not an absolute existing path, and secret commands are keyed to this
 //! application's own service namespace.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
-use crate::engine::EngineState;
+use crate::engine::{EngineInfo, EngineState};
 
 const KEYRING_SERVICE: &str = "whatsapp-forensic-studio";
 
@@ -21,31 +21,32 @@ pub struct EngineHandle {
     port: u16,
 }
 
-#[tauri::command]
-pub fn engine_info(state: State<'_, EngineState>) -> EngineHandle {
-    EngineHandle {
-        base_url: state.info.base_url.clone(),
-        token: state.info.token.clone(),
-        port: state.info.port,
+impl From<EngineInfo> for EngineHandle {
+    fn from(info: EngineInfo) -> Self {
+        EngineHandle {
+            base_url: info.base_url,
+            token: info.token,
+            port: info.port,
+        }
     }
 }
 
 #[tauri::command]
+pub fn engine_info(state: State<'_, EngineState>) -> Result<EngineHandle, String> {
+    state.info().map(EngineHandle::from)
+}
+
+#[tauri::command]
 pub fn restart_engine(state: State<'_, EngineState>) -> Result<EngineHandle, String> {
-    state.restart()?;
-    Ok(engine_info(state))
+    state.restart().map(EngineHandle::from)
 }
 
 #[tauri::command]
 pub fn app_info(app: AppHandle) -> Result<serde_json::Value, String> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|err| err.to_string())?;
-    let log_dir = app
-        .path()
-        .app_log_dir()
-        .unwrap_or_else(|_| data_dir.join("logs"));
+    // Report the same directory the engine receives through WFS_DATA_DIR, not
+    // Tauri's own app-data key, so Diagnostics and the shell agree.
+    let data_dir = crate::engine::data_dir()?;
+    let log_dir = data_dir.join("logs");
     Ok(serde_json::json!({
         "name": "WhatsApp Forensic Studio AI",
         "version": app.package_info().version.to_string(),
@@ -111,10 +112,8 @@ pub async fn pick_save_path(
         if let Some(extensions) = extensions {
             let owned: Vec<&str> = extensions.iter().map(String::as_str).collect();
             if !owned.is_empty() {
-                dialog = dialog.add_filter(
-                    filter_name.as_deref().unwrap_or("Files"),
-                    owned.as_slice(),
-                );
+                dialog =
+                    dialog.add_filter(filter_name.as_deref().unwrap_or("Files"), owned.as_slice());
             }
         }
         dialog
@@ -213,7 +212,10 @@ pub fn open_path(path: String, reveal_only: Option<bool>) -> Result<(), String> 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let dir = if reveal && target.is_file() {
-            target.parent().map(Path::to_path_buf).unwrap_or(target.clone())
+            target
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or(target.clone())
         } else {
             target.clone()
         };

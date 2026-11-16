@@ -19,6 +19,20 @@ relies on the bundled WebView2 bootstrapper.
 npm ci
 python3 -m venv .venv
 .venv/bin/pip install -r forensic-engine/requirements.txt
+
+# Rust shell (1.77+). On Windows install the MSVC build tools and WebView2;
+# on Linux install webkit2gtk-4.1 / gtk3 development packages.
+rustup toolchain install stable
+rustup component add rustfmt clippy
+```
+
+Verify the Rust shell at any time:
+
+```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+# headless Linux without GTK/WebKit dev packages:
+cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
 ```
 
 `forensic-engine/requirements.txt` pins the runtime libraries used for reports
@@ -73,6 +87,7 @@ In `tauri dev` the Rust shell launches the engine from source using `python`
 | `WFS_TOKEN` | engine | Bearer token required on every `/api` request. The shell generates one per session. |
 | `WFS_LOG_DIR` | engine | Diagnostic log directory (never contains chat content). |
 | `WFS_PYTHON` | shell (dev) | Interpreter used to launch the engine from source. |
+| `OPENAI_API_KEY` | engine | Optional external-provider key. The desktop shell reads it from the OS credential store (Settings → AI) and passes it only in the engine's environment. |
 | `WFS_PERF` | tests | `1` enables the 100k-message import benchmark. |
 | `OLLAMA_HOST` | engine | Ollama endpoint, default `http://127.0.0.1:11434`. |
 

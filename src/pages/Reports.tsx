@@ -1,8 +1,9 @@
-import { Download, FileText, Play, Printer } from "lucide-react";
+import { Download, FileText, FolderOpen, Play, Printer } from "lucide-react";
 import * as React from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge, Button, Checkbox, EmptyState, Field, Input, Panel, Select, Spinner } from "@/components/ui/primitives";
 import { apiUrl, post } from "@/lib/api";
+import { isDesktop, revealPath } from "@/lib/native";
 import { dateTime, num } from "@/lib/format";
 import { useApi } from "@/hooks/useApi";
 import { useCase } from "@/hooks/useCaseContext";
@@ -186,9 +187,21 @@ export function ReportsPage() {
                     </p>
                     <p className="text-[10px] text-muted">{dateTime(report.created_at)} · {num(report.size_bytes)} B</p>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => window.open(apiUrl(`/api/reports/${report.id}/download`), "_blank")}>
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {isDesktop() ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Show the generated file in the file manager"
+                        onClick={() => void revealPath(report.path).then((ok) => { if (!ok) toast({ title: "Could not reveal the report", tone: "error" }); })}
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                    <Button size="icon" variant="ghost" onClick={() => window.open(apiUrl(`/api/reports/${report.id}/download`), "_blank")}>
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
               {(reportsApi.data ?? []).length === 0 ? <p className="p-3 text-[11px] text-muted">No reports generated yet.</p> : null}

@@ -74,9 +74,11 @@ npm run dev          # http://localhost:1420 (proxies /api to 127.0.0.1:8765)
 Then open the app, create a case, and use **Load sample dataset** to populate it
 with the synthetic multilingual fixtures.
 
-Desktop shell (requires Rust + WebKitGTK on Linux / WebView2 on Windows):
+Desktop shell (requires Rust 1.77+ with cargo, plus WebKitGTK on Linux or
+WebView2 on Windows):
 
 ```bash
+rustup toolchain install stable
 npm run tauri:dev
 ```
 
@@ -85,6 +87,21 @@ npm run tauri:dev
 ```bash
 cd forensic-engine && PYTHONPATH=. ../.venv/bin/python -m pytest -q
 WFS_PERF=1 PYTHONPATH=. ../.venv/bin/python -m pytest tests/perf -q   # 100k-message import
+
+# Rust shell (native toolchain; checks the real desktop code)
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+
+# React/TypeScript
+npm run build          # tsc --noEmit && vite build
+```
+
+On a headless Linux host without GTK/WebKit development packages, check the
+Windows target instead (no system libraries required):
+
+```bash
+rustup target add x86_64-pc-windows-msvc
+cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
 ```
 
 The parser, integrity, import, API, recovery, reporting and AI suites run offline
@@ -148,6 +165,10 @@ docs/                    setup, troubleshooting, user guide, architecture
 
 ## Scope and honest limits
 
+* **Rust shell prerequisites:** the desktop crate needs Rust 1.77+, the native
+  WebView libraries of the target OS, and `rfd` for file pickers. `cargo check`
+  verifies it without producing an installer; the Windows installers are built
+  by `windows-latest` CI or `scripts/build_windows.ps1`.
 * **Not implemented, by design:** iPhone backup acquisition, Crypt12/14/15
   decryption, key extraction, device acquisition, and anything that bypasses
   WhatsApp encryption.
