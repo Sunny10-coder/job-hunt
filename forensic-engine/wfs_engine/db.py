@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import threading
 import uuid
 from contextlib import contextmanager
@@ -82,6 +83,17 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
 
 def migrations_dir() -> Path:
+    """Locate migration SQL in both the source tree and a frozen sidecar.
+
+    PyInstaller unpacks bundled data into ``sys._MEIPASS``; the bundled layout is
+    ``wfs_engine/migrations``. Falling back to the module directory keeps tests
+    and source runs unchanged.
+    """
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled:
+        candidate = Path(bundled) / "wfs_engine" / "migrations"
+        if candidate.is_dir():
+            return candidate
     return Path(__file__).resolve().parent / "migrations"
 
 
@@ -94,7 +106,12 @@ def migrate(path: Path | None = None) -> list[int]:
             "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
         done = {r["version"] for r in conn.execute("SELECT version FROM schema_migrations")}
-        files = sorted(migrations_dir().glob("*.sql"))
+        directory = migrations_dir()
+        files = sorted(directory.glob("*.sql"))
+        if not files:
+            # A packaged build without its migrations would silently create an
+            # empty schema and every later query would fail confusingly.
+            raise RuntimeError(f"no SQL migrations found in {directory}")
         for f in files:
             try:
                 version = int(f.name.split("_", 1)[0])
@@ -115,7 +132,20 @@ def migrate(path: Path | None = None) -> list[int]:
 
 
 def _split_statements(sql: str) -> list[str]:
-    """Split on semicolons outside of string literals and BEGIN..END blocks."""
+    """Split on semicolons that are outside single-quoted literals.
+
+    Multi-statement trigger bodies are *not* handled by this splitter, so a
+    migration containing ``CREATE TRIGGER`` is rejected loudly instead of being
+    cut in half. Add real BEGIN..END handling before shipping such a migration.
+    """
+    if "CREATE TRIGGER" in sql.upper():
+        raise RuntimeError(
+            "migration contains a trigger body; extend _split_statements before "
+            "shipping migrations with BEGIN..END blocks")
+    # Full-line SQL comments are documentation, not executable statements; the
+    # splitter would otherwise hand them to SQLite alongside the next statement.
+    sql = "\n".join(line for line in sql.splitlines()
+                    if not line.lstrip().startswith("--"))
     statements: list[str] = []
     buf: list[str] = []
     in_single = False

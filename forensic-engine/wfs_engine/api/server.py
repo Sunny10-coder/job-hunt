@@ -854,9 +854,7 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------ helpers
     def _cors(self) -> None:
         origin = self.headers.get("Origin", "")
-        allowed = ("http://localhost", "http://127.0.0.1", "tauri://localhost",
-                   "https://tauri.localhost")
-        if origin.startswith(allowed):
+        if origin and self._origin_allowed(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -872,6 +870,32 @@ class Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
         self.wfile.write(data)
+
+    # Exact origins only: a prefix test would accept "http://localhost.evil.com"
+    # and reflect it back to the caller.
+    ALLOWED_ORIGIN_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+    ALLOWED_ORIGINS = frozenset({"tauri://localhost", "https://tauri.localhost"})
+
+    @classmethod
+    def _origin_allowed(cls, origin: str) -> bool:
+        """Allow the desktop shell and loopback development origins."""
+        if origin in cls.ALLOWED_ORIGINS:
+            return True
+        try:
+            parsed = urllib.parse.urlsplit(origin)
+        except ValueError:
+            return False
+        if parsed.scheme not in ("http", "https"):
+            return False
+        if parsed.username is not None or parsed.password is not None:
+            return False
+        try:
+            parsed.port  # noqa: B018 - raises ValueError on a malformed port
+        except ValueError:
+            return False
+        # urlsplit lowercases the hostname and strips the userinfo section, so
+        # "http://localhost@evil.com" resolves to host "evil.com" here.
+        return (parsed.hostname or "") in cls.ALLOWED_ORIGIN_HOSTS
 
     def _authorised(self) -> bool:
         if not self.token:

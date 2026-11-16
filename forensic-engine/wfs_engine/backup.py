@@ -17,8 +17,13 @@ from typing import Any
 from . import cases as cases_mod
 from . import config, db
 from .hashing import sha256_file
+from .safety import unique_path
 
 MAGIC = b"WFSBAKE1"
+
+# Upper bound on what a single backup may expand to. Archives are supplied by
+# the examiner, but a corrupted or hostile file must not exhaust the disk.
+MAX_RESTORE_BYTES = 16 * 1024 ** 3
 
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -131,8 +136,10 @@ def create_backup(conn, case_id: str, password: str, dest: Path | None = None) -
     nonce = os.urandom(12)
     key = _derive(password, salt)
     ciphertext = AESGCM(key).encrypt(nonce, plaintext, MAGIC)
-    out = dest or (config.data_dir() / "backups" /
-                   f"{case_id[:8]}-{db.now_utc().replace(':', '').replace('-', '')[:13]}.wfsbak")
+    # A minute-resolution name would let two backups in the same minute
+    # overwrite each other; unique_path never returns an existing file.
+    out = dest or unique_path(config.data_dir() / "backups",
+                              f"{case_id[:8]}-backup", "wfsbak")
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "wb") as fh:
         fh.write(MAGIC + struct.pack(">I", len(salt)))
@@ -165,51 +172,100 @@ def restore_backup(conn, backup_path: Path, password: str,
     except Exception as exc:  # noqa: BLE001
         raise ValueError("decryption failed: wrong passphrase or corrupted backup") from exc
 
+    # Stage every member in memory first: nothing is written to the case
+    # directory until the whole archive has been validated.
     buffer = io.BytesIO(plaintext)
+    rows_json: dict[str, Any] | None = None
+    staged: dict[str, bytes] = {}
+    total = 0
     with tarfile.open(fileobj=buffer, mode="r:gz") as tar:
-        members = tar.getmembers()
-        rows_json = None
-        for member in members:
+        for member in tar.getmembers():
             if member.name == "case_rows.json":
-                rows_json = json.loads(tar.extractfile(member).read().decode("utf-8"))
-        if rows_json is None:
-            raise ValueError("backup archive is missing its data manifest")
-
-        source_case = rows_json["cases"][0]
-        new_case = cases_mod.create_case(
-            conn,
-            name=new_name or f"{source_case['name']} (restored)",
-            description=source_case.get("description", ""),
-            examiner=source_case.get("examiner", ""),
-            authorization_statement=source_case.get("authorization_statement", ""),
-        )
-        root = Path(new_case["dir_path"])
-        for member in members:
+                handle = tar.extractfile(member)
+                if handle is not None:
+                    rows_json = json.loads(handle.read().decode("utf-8"))
+                continue
             if not member.name.startswith("case/") or not member.isfile():
                 continue
             rel = Path(member.name).relative_to("case")
+            if rel.is_absolute() or ".." in rel.parts:
+                raise ValueError(
+                    f"archive member escapes the case directory: {member.name}")
+            handle = tar.extractfile(member)
+            data = handle.read() if handle is not None else b""
+            if len(data) != member.size:
+                raise ValueError(f"archive member is truncated: {member.name}")
+            total += len(data)
+            if total > MAX_RESTORE_BYTES:
+                raise ValueError(
+                    f"backup expands beyond the {MAX_RESTORE_BYTES // (1024 ** 3)} GiB "
+                    "restore limit")
+            staged[str(rel)] = data
+
+    if rows_json is None:
+        raise ValueError("backup archive is missing its data manifest")
+    if not rows_json.get("cases"):
+        raise ValueError("backup contains no case record")
+
+    source_case = rows_json["cases"][0]
+    new_case = cases_mod.create_case(
+        conn,
+        name=new_name or f"{source_case['name']} (restored)",
+        description=source_case.get("description", ""),
+        examiner=source_case.get("examiner", ""),
+        authorization_statement=source_case.get("authorization_statement", ""),
+    )
+    root = Path(new_case["dir_path"])
+
+    # All-or-nothing: any failure removes the half-built case (rows and files)
+    # so a partial restore can never be mistaken for a complete one.
+    try:
+        for rel, data in staged.items():
             target = (root / rel).resolve()
             if root.resolve() not in target.parents:
-                continue
+                raise ValueError(f"refusing to write outside the case directory: {rel}")
             target.parent.mkdir(parents=True, exist_ok=True)
-            data = tar.extractfile(member)
-            if data:
-                with open(target, "wb") as fh:
-                    fh.write(data.read())
+            target.write_bytes(data)
+        old_root = rows_json["_meta"]["case_root"]
+        inserted = _reinsert(conn, rows_json, new_case["id"], old_root, str(root))
+        _verify_restore(rows_json, inserted)
+        cases_mod.write_manifest(conn, new_case["id"])
+    except Exception:
+        cases_mod.delete_case(conn, new_case["id"], remove_files=True)
+        raise
 
-    old_root = rows_json["_meta"]["case_root"]
-    _reinsert(conn, rows_json, new_case["id"], old_root, str(root))
-    cases_mod.write_manifest(conn, new_case["id"])
     db.audit(conn, "case.restore", new_case["id"], "user", {
-        "backup": str(backup_path), "source_case": source_case["id"]})
+        "backup": str(backup_path), "source_case": source_case["id"],
+        "files": len(staged), "bytes": total})
     return {"case": cases_mod.get_case(conn, new_case["id"]),
-            "source_case_id": source_case["id"]}
+            "source_case_id": source_case["id"], "restored_files": len(staged)}
+
+
+def _verify_restore(dump: dict[str, Any], inserted: dict[str, int]) -> None:
+    """Prove every dumped row was inserted before reporting success.
+
+    Counts come from ``_reinsert`` itself, so rows created afterwards (audit
+    entries, derived timeline events) cannot mask a missing record.
+    """
+    mismatches: list[str] = []
+    for table, rows in dump.items():
+        if table in ("_meta", "cases") or not rows:
+            continue
+        if inserted.get(table, 0) != len(rows):
+            mismatches.append(f"{table}: {inserted.get(table, 0)} of {len(rows)}")
+    if mismatches:
+        raise RuntimeError("restore verification failed: " + ", ".join(mismatches))
 
 
 def _reinsert(conn, dump: dict[str, Any], new_case_id: str, old_root: str,
-              new_root: str) -> None:
-    """Insert every dumped row under a new case id, remapping all primary keys."""
+              new_root: str) -> dict[str, int]:
+    """Insert every dumped row under a new case id, remapping all primary keys.
+
+    Any failed insert aborts the whole restore. Returns per-table insert counts
+    so the caller can verify completeness.
+    """
     id_maps: dict[str, dict[str, str]] = {}
+    inserted: dict[str, int] = {}
 
     def map_id(table: str, value: str | None) -> str | None:
         if value is None:
@@ -251,10 +307,21 @@ def _reinsert(conn, dump: dict[str, Any], new_case_id: str, old_root: str,
             try:
                 conn.execute(f'INSERT INTO "{table}" ({cols}) VALUES ({marks})',
                              tuple(new_row.values()))
-            except Exception as exc:  # noqa: BLE001 - keep restoring what we can
-                db.audit(conn, "case.restore.row_error", new_case_id, "engine",
-                         {"table": table, "error": str(exc)[:300]})
+            except Exception as exc:  # noqa: BLE001 - abort the whole restore
+                raise RuntimeError(
+                    f"restore failed inserting into {table}: {exc}") from exc
+            inserted[table] = inserted.get(table, 0) + 1
         id_maps[table] = id_map
+
+    # Case settings are keyed by the case id instead of an ``id`` column, so they
+    # are restored explicitly here (previously they were silently dropped).
+    for row in dump.get("case_settings") or []:
+        conn.execute(
+            "INSERT OR REPLACE INTO case_settings(case_id, json, updated_at)"
+            " VALUES(?,?,?)",
+            (new_case_id, row.get("json") or "{}",
+             row.get("updated_at") or db.now_utc()))
+        inserted["case_settings"] = inserted.get("case_settings", 0) + 1
 
     # Case-level row: replace the restored id with the freshly created case.
     conn.execute("UPDATE cases SET description=?, examiner=? WHERE id=?",
@@ -270,3 +337,4 @@ def _reinsert(conn, dump: dict[str, Any], new_case_id: str, old_root: str,
     from . import importer
 
     importer.finalize_case(conn, new_case_id)
+    return inserted

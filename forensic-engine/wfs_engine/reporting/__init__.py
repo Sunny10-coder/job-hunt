@@ -10,6 +10,7 @@ from typing import Any
 from .. import cases as cases_mod
 from .. import db
 from ..hashing import sha256_file
+from ..safety import spreadsheet_safe, unique_path
 from . import builder, render_html, render_pdf, render_xlsx
 
 FORMATS = ("html", "pdf", "xlsx", "csv", "json")
@@ -25,9 +26,9 @@ def generate(conn, case_id: str, report_type: str = "case", fmt: str = "pdf",
     report = builder.build(conn, case_id, report_type, options)
     out_dir = Path(case["dir_path"]) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = db.now_utc().replace(":", "").replace("-", "")[:13]
-    base = f"{report_type}-report-{stamp}"
-    path = out_dir / f"{base}.{fmt}"
+    # Never overwrite a previously generated report: two exports in the same
+    # minute are both evidence products and must both survive.
+    path = unique_path(out_dir, f"{report_type}-report", fmt)
 
     if fmt == "html":
         theme = options.get("theme", "graphite")
@@ -46,9 +47,11 @@ def generate(conn, case_id: str, report_type: str = "case", fmt: str = "pdf",
         for block in report["blocks"]:
             if block["type"] == "table":
                 for row in block["rows"]:
-                    writer.writerow([block["title"], *row])
+                    writer.writerow([spreadsheet_safe(cell)
+                                     for cell in [block["title"], *row]])
             elif block["type"] == "kpi":
-                writer.writerow(["summary", block["label"], block["value"]])
+                writer.writerow([spreadsheet_safe(cell) for cell in
+                                 ["summary", block["label"], block["value"]]])
         path.write_text(buffer.getvalue(), encoding="utf-8-sig")
 
     digest = sha256_file(path)
@@ -118,8 +121,7 @@ def export_messages(conn, case_id: str, *, fmt: str = "csv",
     rows = db.rows_to_list(conn.execute(sql, (*params, limit)))
     out_dir = Path(case["dir_path"]) / "exports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = db.now_utc().replace(":", "").replace("-", "")[:13]
-    path = out_dir / f"messages-{stamp}.{fmt}"
+    path = unique_path(out_dir, "messages", fmt)
     if fmt == "json":
         path.write_text(json.dumps(rows, indent=2, ensure_ascii=False, default=str),
                         encoding="utf-8")
@@ -128,7 +130,8 @@ def export_messages(conn, case_id: str, *, fmt: str = "csv",
             writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()) if rows else
                                     ["sent_at_utc"])
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows([{key: spreadsheet_safe(value) for key, value in row.items()}
+                              for row in rows])
     digest = sha256_file(path)
     conn.execute(
         "INSERT INTO export_jobs(id, case_id, kind, status, path, created_at, finished_at)"

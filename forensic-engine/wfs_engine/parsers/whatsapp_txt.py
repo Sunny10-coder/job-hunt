@@ -124,6 +124,36 @@ def decode_text(raw: bytes) -> tuple[str, str]:
 
 
 class WhatsAppTxtParser:
+    @staticmethod
+    def scan_participants(path: Path, *, max_names: int = 500) -> set[str]:
+        """Collect sender names for conversation identity in one cheap pass.
+
+        The identity of a chat is the people in it. File names are unreliable:
+        the same conversation is often exported as ``export-1.txt`` and
+        ``export-2.txt``. This pre-pass reads the export once and only extracts
+        the sender token, so the cost is a fraction of a full parse.
+        """
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            return set()
+        text, _ = decode_text(raw)
+        names: set[str] = set()
+        for line in text.splitlines():
+            cleaned = textutil.clean_line(line)
+            block = BRACKET_LINE_RE.match(cleaned) or DASH_LINE_RE.match(cleaned)
+            if not block:
+                continue
+            sender = SENDER_SPLIT_RE.match(block.group("rest").strip())
+            if not sender:
+                continue
+            name = sender.group("sender").strip()
+            if name and len(name) <= MAX_SENDER_LEN:
+                names.add(name)
+            if len(names) >= max_names:
+                break
+        return names
+
     def __init__(self, timezone_name: str = "UTC", date_order: str = "auto",
                  session_gap_minutes: int = config.SESSION_GAP_MINUTES,
                  sender_self_names: tuple[str, ...] = ("You",)):

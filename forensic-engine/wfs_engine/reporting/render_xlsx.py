@@ -8,6 +8,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from ..safety import spreadsheet_safe
+
 HEADER_FILL = PatternFill("solid", fgColor="0F172A")
 HEADER_FONT = Font(color="E6EDF5", bold=True, size=10)
 BODY_FONT = Font(size=10)
@@ -82,6 +84,7 @@ def _write_rows(sheet, columns: list[str], rows: list[list[Any]],
 
 
 def _clean(value: Any) -> Any:
-    if isinstance(value, (int, float, str)) or value is None:
+    if isinstance(value, (int, float)) or value is None:
         return value
-    return str(value)
+    # Imported chat text must never be evaluated as a spreadsheet formula.
+    return spreadsheet_safe(value) if isinstance(value, str) else str(value)

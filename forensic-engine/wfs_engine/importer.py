@@ -318,10 +318,13 @@ def _import_chat_file(conn, case, evidence_id: str, txt_path: Path,
     parser = WhatsAppTxtParser(timezone_name=tz, date_order=opts.get("date_order", "auto"))
     label = f"evidence:{evidence_id[:8]}/{txt_path.name}"
 
-    # Conversation is created up-front from the file name so messages can be
-    # inserted in a single streaming pass.
+    # Conversation is created up-front so messages can be inserted in a single
+    # streaming pass. Its identity comes from the chat participants, not the file
+    # name, so re-exported snapshots reconcile and separate chats never merge.
     title = parser._conversation_title(Path(title_hint), "")
-    conv_id = _upsert_conversation(conn, case["id"], evidence_id, title, "chat")
+    identity = chat_identity(parser.scan_participants(txt_path), title)
+    conv_id = _upsert_conversation(conn, case["id"], evidence_id, title, "chat",
+                                   identity)
     contact_cache: dict[str, str] = {}
     ordinals: dict[tuple[str, str, str], int] = {}
     buffer: list[ParsedMessage] = []
@@ -453,50 +456,84 @@ def _zip_chat_title(zip_path: Path, txt: Path) -> str:
 
 def _import_sqlite(conn, case, evidence_id: str, db_path: Path, opts: dict[str, Any],
                    job_id: str | None) -> dict[str, Any]:
+    """Import an accessible database, preserving its conversation structure.
+
+    Each distinct conversation identifier becomes its own conversation row; the
+    database file is never treated as a single chat.
+    """
     info = sqlite_wa.inspect_db(db_path)
     if not info.supported:
         raise ValueError(f"Unsupported database: {info.reason}")
     label = f"evidence:{evidence_id[:8]}/{db_path.name}"
-    title = db_path.stem
-    conv_id = _upsert_conversation(conn, case["id"], evidence_id, title, "chat")
     tz = opts.get("source_timezone") or "UTC"
     contact_cache: dict[str, str] = {}
+    conversations: dict[str, str] = {}
+    titles: dict[str, str] = {}
     count = 0
+    duplicates = 0
+    confidences: list[float] = []
     for record in sqlite_wa.iter_messages(db_path, label, tz):
+        jid = record["conversation_jid"]
+        conv_id = conversations.get(jid)
+        if conv_id is None:
+            conv_id = _upsert_conversation(conn, case["id"], evidence_id,
+                                           record["conversation_title"],
+                                           record["conversation_kind"],
+                                           f"jid:{jid}")
+            conversations[jid] = conv_id
+            titles[jid] = record["conversation_title"]
         sender = record["sender_raw"]
         sender_id = _contact_id(conn, case["id"], sender, contact_cache)
-        mid = db.new_id()
         body = record["body"] or ""
-        content_hash = message_fingerprint(record["sent_at_utc"], sender, body)
+        content_hash = message_fingerprint(f"jid:{jid}", record["sent_at_utc"],
+                                           sender, body)
         exists = conn.execute(
             "SELECT id FROM messages WHERE case_id=? AND content_hash=?",
             (case["id"], content_hash)).fetchone()
         if exists:
+            duplicates += 1
             _observe(conn, exists["id"], evidence_id, record["source_ref"], content_hash)
             continue
+        mid = db.new_id()
+        confidence = float(record.get("parse_confidence", sqlite_wa.BASE_CONFIDENCE))
+        confidences.append(confidence)
         conn.execute(
             "INSERT INTO messages(id, case_id, evidence_id, conversation_id, sender_id,"
             " sender_raw, original_timestamp, sent_at_local, sent_at_utc, tz_offset_min,"
-            " tz_ambiguous, raw_text, body, message_type, source_ref, parse_confidence,"
+            " tz_ambiguous, raw_text, body, message_type, is_deleted, is_edited,"
+            " is_forwarded, has_media, media_ref, source_ref, parse_confidence,"
             " content_hash, imported_at, word_count, char_count)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (mid, case["id"], evidence_id, conv_id, sender_id, sender,
              record["original_timestamp"], record["sent_at_local"], record["sent_at_utc"],
              record["tz_offset_min"], int(record["tz_ambiguous"]), record["raw_text"],
-             body, record["message_type"], record["source_ref"], 1.0, content_hash,
-             db.now_utc(), record["word_count"], record["char_count"]))
+             body, record["message_type"], int(record["is_deleted"]),
+             int(record["is_edited"]), int(record["is_forwarded"]),
+             int(record["has_media"]), record["media_ref"], record["source_ref"],
+             confidence, content_hash, db.now_utc(), record["word_count"],
+             record["char_count"]))
         conn.execute(
             "INSERT INTO messages_fts(message_id, case_id, body, sender, conversation)"
-            " VALUES(?,?,?,?,?)", (mid, case["id"], body, sender, title))
+            " VALUES(?,?,?,?,?)", (mid, case["id"], body, sender, titles[jid]))
         _observe(conn, mid, evidence_id, record["source_ref"], content_hash)
         count += 1
         if count % 2000 == 0 and job_id:
             _check_cancel(conn, job_id)
     if job_id:
-        _log(conn, job_id, "parse", f"{db_path.name}: {count} rows read")
+        _log(conn, job_id, "parse",
+             f"{db_path.name}: {count} rows read across {len(conversations)} conversations")
+    average = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
     return {"message_count": count, "language": "unknown", "date_order": "n/a",
-            "date_order_confidence": 0.0, "parse_confidence": 1.0,
-            "conversation_id": conv_id, "extra": {"sqlite_rows": count}}
+            "date_order_confidence": 0.0, "parse_confidence": average,
+            "conversation_id": next(iter(conversations.values()), None),
+            "extra": {"sqlite_rows": count,
+                      "sqlite_duplicates": duplicates,
+                      "sqlite_conversations": len(conversations),
+                      "sqlite_schema_table": info.message_table,
+                      "sqlite_confidence_note":
+                          "Rows are readable without a key; field semantics are "
+                          "inferred from the documented schema, so confidence is "
+                          f"{average}, not 1.0."}}
 
 
 def _import_standalone_media(conn, case, evidence_id: str, path: Path,
@@ -508,23 +545,48 @@ def _import_standalone_media(conn, case, evidence_id: str, path: Path,
 
 
 # ------------------------------------------------------------------ record helpers
+SELF_NAMES = {"you", "me", "self", "myself", "i"}
+
+
+def chat_identity(participants: set[str], title: str) -> str:
+    """Stable conversation identity used for fingerprints.
+
+    A chat is identified by the people in it, not by the export file name: two
+    snapshots of the same conversation usually arrive as ``export-1.txt`` and
+    ``export-2.txt`` and must still reconcile. Distinct participant sets are
+    distinct conversations even when a sender, time and text happen to match.
+    """
+    others = sorted({p.strip().lower() for p in participants
+                     if p.strip() and p.strip().lower() not in SELF_NAMES})
+    if others:
+        return ("participants:" + "|".join(others))[:400]
+    return ("title:" + title.strip().lower())[:400]
+
+
 def _upsert_conversation(conn, case_id: str, evidence_id: str, title: str,
-                         kind: str) -> str:
+                         kind: str, identity_key: str | None = None) -> str:
+    key = (identity_key or f"title:{title.strip().lower()}")[:400]
     row = conn.execute(
-        "SELECT id FROM conversations WHERE case_id=? AND title=? AND kind=?",
-        (case_id, title, kind)).fetchone()
+        "SELECT id FROM conversations WHERE case_id=? AND identity_key=?",
+        (case_id, key)).fetchone()
     if row:
         return row["id"]
+    # Adopt a conversation created before identity keys existed (or by an older
+    # import of the same title) instead of duplicating it.
+    legacy_key = f"title:{title.strip().lower()}"
     other = conn.execute(
-        "SELECT id, kind FROM conversations WHERE case_id=? AND title=?",
-        (case_id, title)).fetchone()
+        "SELECT id FROM conversations WHERE case_id=? AND title=?"
+        " AND (identity_key IS NULL OR identity_key=?) LIMIT 1",
+        (case_id, title, legacy_key)).fetchone()
     if other:
+        conn.execute("UPDATE conversations SET identity_key=? WHERE id=?",
+                     (key, other["id"]))
         return other["id"]
     conv_id = db.new_id()
     conn.execute(
-        "INSERT INTO conversations(id, case_id, title, kind, evidence_id, message_count,"
-        " media_count) VALUES(?,?,?,?,?,0,0)",
-        (conv_id, case_id, title, kind, evidence_id))
+        "INSERT INTO conversations(id, case_id, title, kind, evidence_id, identity_key,"
+        " message_count, media_count) VALUES(?,?,?,?,?,?,0,0)",
+        (conv_id, case_id, title, kind, evidence_id, key))
     return conv_id
 
 
@@ -559,14 +621,20 @@ def _flush(conn, case_id: str, evidence_id: str, conv_id: str,
            buffer: list[ParsedMessage], contact_cache: dict[str, str],
            ordinals: dict[tuple[str, str, str], int], tags: list[str]) -> tuple[int, int]:
     """Insert one batch, deduplicating by content fingerprint."""
-    conv_title = conn.execute("SELECT title FROM conversations WHERE id=?",
-                              (conv_id,)).fetchone()["title"]
+    conversation = conn.execute(
+        "SELECT title, identity_key FROM conversations WHERE id=?",
+        (conv_id,)).fetchone()
+    conv_title = conversation["title"]
+    # Identity, not the random row id: hashes must be stable across snapshots
+    # and across cases. Two chats can legitimately contain the same sender,
+    # timestamp and text, so the chat identity is part of the fingerprint.
+    conv_key = conversation["identity_key"] or f"title:{conv_title.strip().lower()}"
     hashes: list[str] = []
     for msg in buffer:
-        key = (msg.sent_at_utc, msg.sender_raw, msg.body)
+        key = (conv_key, msg.sent_at_utc, msg.sender_raw, msg.body)
         ordinals[key] = ordinals.get(key, 0) + 1
         msg.content_hash = message_fingerprint(
-            msg.sent_at_utc, msg.sender_raw, msg.body, str(ordinals[key]))
+            conv_key, msg.sent_at_utc, msg.sender_raw, msg.body, str(ordinals[key]))
         hashes.append(msg.content_hash)
 
     existing: dict[str, dict[str, Any]] = {}

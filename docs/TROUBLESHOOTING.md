@@ -2,16 +2,25 @@
 
 ## The application says "Forensic engine unavailable"
 
-1. Development: start the engine yourself and confirm it answers:
+1. Development: start the engine yourself and confirm it answers. Every route,
+   including `/api/health`, requires the session token, so pass it as a header:
    ```bash
-   cd forensic-engine && PYTHONPATH=. WFS_DATA_DIR=../.wfs-data ../.venv/bin/python -m wfs_engine.cli serve --port 8765
-   curl http://127.0.0.1:8765/api/health
+   cd forensic-engine && PYTHONPATH=. WFS_DATA_DIR=../.wfs-data WFS_TOKEN=dev-token \
+     ../.venv/bin/python -m wfs_engine.cli serve --port 8765
+   curl -H "Authorization: Bearer dev-token" http://127.0.0.1:8765/api/health
    ```
+   An unauthenticated request returning 401 is correct behaviour, not a fault.
 2. Desktop build: the sidecar must exist beside the executable
-   (`wfs-engine.exe`). If it is missing, the bundle was produced without
-   `scripts/build_sidecar.sh`; rebuild with `scripts/build_windows.ps1`.
-3. Check the log directory (`%APPDATA%\WhatsAppForensicStudio\data\logs`). Startup
-   errors name the failing stage; logs never contain message text.
+   (`wfs-engine.exe`) and must be invoked with its `serve` subcommand. If it is
+   missing, the bundle was produced without `scripts/build_sidecar.sh`; rebuild
+   with `scripts/build_windows.ps1` or let the CI workflow build it.
+3. Check the log directory (`%APPDATA%\WhatsAppForensicStudio\data\logs\engine.log`,
+   rotated at 5 MiB). Startup errors name the failing stage; logs never contain
+   message text.
+4. "no SQL migrations found" means the frozen sidecar was built without its
+   migration files. Rebuild with `scripts/build_sidecar.sh`, which bundles
+   `wfs_engine/migrations`; the engine refuses to start rather than create an
+   empty database.
 
 ## "Request failed: HTTP 401"
 
@@ -94,6 +103,18 @@ at the same `WFS_DATA_DIR`; the API serialises writes, but two processes do not.
 Backups are encrypted with a passphrase (AES-256-GCM, scrypt). Restore from
 Welcome → Restore backup into a **new** case; existing cases are never
 overwritten. A forgotten passphrase cannot be recovered — that is the point.
+
+Restore is all-or-nothing: the archive is validated and staged before anything
+is written, every row insert must succeed, and per-table counts are verified. If
+anything fails, the partially built case is removed and the error is reported;
+you will never be left with a case that merely looks restored. Backup files get
+unique names, so taking two backups in the same minute keeps both.
+
+## A report or export was generated twice
+
+Nothing was overwritten. Report, export and backup names include milliseconds
+plus a collision check, so every product keeps its own path and its own SHA-256
+recorded in the reports list.
 
 ## Uninstall removed the application but kept my data
 

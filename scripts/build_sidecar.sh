@@ -29,6 +29,12 @@ PYTHON="${PYTHON:-python3}"
 mkdir -p "$OUT"
 cd "$ENGINE"
 
+# PyInstaller's --add-data separator differs between POSIX and Windows hosts.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) DATA_SEP=";" ;;
+  *) DATA_SEP=":" ;;
+esac
+
 "$PYTHON" -m pip install --quiet --upgrade pyinstaller
 "$PYTHON" -m PyInstaller \
   --noconfirm \
@@ -45,6 +51,7 @@ cd "$ENGINE"
   --hidden-import wfs_engine.reporting.render_pdf \
   --hidden-import wfs_engine.reporting.render_xlsx \
   --collect-submodules wfs_engine \
+  --add-data "$ENGINE/wfs_engine/migrations${DATA_SEP}wfs_engine/migrations" \
   entrypoint.py
 
 EXT=""

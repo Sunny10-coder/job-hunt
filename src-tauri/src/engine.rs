@@ -68,7 +68,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<EngineState, Box<dyn std::error::Err
         let port = free_port()?;
         match spawn_process(&port, &token) {
             Ok(mut child) => {
-                if wait_until_ready(port, Duration::from_secs(45)) {
+                if wait_until_ready(port, &token, Duration::from_secs(45)) {
                     let info = EngineInfo {
                         base_url: format!("http://127.0.0.1:{port}"),
                         token: token.clone(),
@@ -137,9 +137,29 @@ fn spawn_process(port: u16, token: &str) -> Result<Child, String> {
             ));
         }
         let mut command = Command::new(sidecar);
-        command.current_dir(dir);
+        // The frozen entry point is the CLI, so the subcommand is required here
+        // exactly as it is in development.
+        command.arg("serve").current_dir(dir);
         command
     };
+
+    // Engine output goes to a rotating log file so a failed start can be
+    // diagnosed. The log holds startup messages and errors only - chat content
+    // is never written there by the engine.
+    let log_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&log_dir).map_err(|err| err.to_string())?;
+    let log_path = log_dir.join("engine.log");
+    if let Ok(meta) = std::fs::metadata(&log_path) {
+        if meta.len() > 5 * 1024 * 1024 {
+            let _ = std::fs::rename(&log_path, log_dir.join("engine.log.1"));
+        }
+    }
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|err| format!("cannot open {}: {err}", log_path.display()))?;
+    let log_err = log.try_clone().map_err(|err| err.to_string())?;
 
     command
         .arg("--host")
@@ -148,10 +168,10 @@ fn spawn_process(port: u16, token: &str) -> Result<Child, String> {
         .arg(port.to_string())
         .env("WFS_DATA_DIR", &data_dir)
         .env("WFS_TOKEN", token)
-        .env("WFS_LOG_DIR", data_dir.join("logs"))
+        .env("WFS_LOG_DIR", log_dir)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(log_err));
 
     command
         .spawn()
@@ -170,10 +190,10 @@ fn data_dir() -> Result<PathBuf, String> {
 }
 
 /// Poll `/api/health` until the engine answers 200 or the deadline passes.
-fn wait_until_ready(port: u16, timeout: Duration) -> bool {
+fn wait_until_ready(port: u16, token: &str, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if health_ok(port) {
+        if health_ok(port, token) {
             return true;
         }
         std::thread::sleep(Duration::from_millis(250));
@@ -181,13 +201,18 @@ fn wait_until_ready(port: u16, timeout: Duration) -> bool {
     false
 }
 
-fn health_ok(port: u16) -> bool {
+/// Health probe. The engine authenticates every route, including `/api/health`,
+/// so the probe presents the session token in the request header (never in the
+/// URL, never on the command line).
+fn health_ok(port: u16, token: &str) -> bool {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
     let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(500)) else {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
-    let request = "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    let request = format!(
+        "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n"
+    );
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }

@@ -89,7 +89,9 @@ WFS_PERF=1 PYTHONPATH=. ../.venv/bin/python -m pytest tests/perf -q   # 100k-mes
 
 The parser, integrity, import, API, recovery, reporting and AI suites run offline
 against synthetic fixtures in `forensic-engine/tests/fixtures/`. No real
-conversation data is included anywhere in this repository.
+conversation data is included anywhere in this repository. The current suite is
+`172 passed, 1 skipped`; the skipped test requires a model or media tool that is
+not installed in the sandbox.
 
 The assistant has an end-to-end offline test that stands a stub
 OpenAI-compatible endpoint on loopback
@@ -103,8 +105,8 @@ Measured on this development VM (Linux, Python 3.12, SQLite WAL):
 
 | Workload | Time |
 | --- | --- |
-| 20,000 text messages | 3.35 s |
-| 100,000 text messages | 19.82 s |
+| 20,000 text messages | 2.87 s |
+| 100,000 text messages | 19.07 s |
 | Indexed FTS search over 20k messages | < 2 s |
 | First page of a 5k-message conversation | < 1 s |
 
@@ -116,8 +118,11 @@ and will fail loudly on slower hardware.
 
 ## Windows build
 
-On Windows 10/11 x64 with Rust (MSVC), Node 20+, Python 3.12 and WiX/NSIS
-provisioned by Tauri:
+`.github/workflows/ci.yml` builds the frozen sidecar, the NSIS and MSI bundles
+on `windows-latest`, smoke-tests the frozen engine's authenticated health check
+and uploads the installers as workflow artifacts. To build locally, on Windows
+10/11 x64 with Rust (MSVC), Node 20+, Python 3.12 and WiX/NSIS provisioned by
+Tauri:
 
 ```powershell
 pwsh -File scripts/build_windows.ps1
@@ -155,6 +160,32 @@ docs/                    setup, troubleshooting, user guide, architecture
   formulas, not statements about people.
 * The Windows installer must be produced on Windows; the build pipeline is
   provided and documented, and this repository cannot build it on Linux.
+
+## Forensic guarantees added in the repair round
+
+* **Chat identity, not file names.** A conversation is identified by the people
+  in it (`conversations.identity_key`) or by the database JID, so two snapshots
+  exported as `export-1.txt`/`export-2.txt` reconcile, while identical text sent
+  at the same second in two different chats stays two messages. Legacy cases are
+  backfilled by migration `0003_conversation_identity.sql`.
+* **Readable is not the same as understood.** Rows from accessible SQLite
+  databases are scored 0.9 (0.85 for media rows); databases without a
+  conversation identifier or timestamps are rejected with an explanation rather
+  than imported under an invented conversation name.
+* **Restore is all-or-nothing.** Backups are validated and staged before
+  anything is written, every row insert is fatal, per-table counts are verified,
+  and a failure removes the half-built case instead of leaving a plausible but
+  incomplete one.
+* **Evidence products are never overwritten.** Reports, exports and backups get
+  unique, never-reused paths; spreadsheet output escapes formula-leading text.
+* **The API is closed by default.** The engine requires its per-session bearer
+  token on every route (including `/api/health`) and only answers the desktop
+  shell and loopback origins validated by exact scheme/host/port.
+* **Migrations ship with the sidecar.** A packaged build without migrations
+  refuses to start instead of creating an empty database.
+
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the defect list and the executed
+verification results.
 
 ## Licence
 

@@ -24,8 +24,11 @@ def test_snapshot_comparison_only_uses_shared_conversations(conn, sample_case, t
     first = tmp_path / "one.txt"
     first.write_text("01/05/24, 10:00 - Alice: alpha\n01/05/24, 10:01 - Bob: beta\n",
                      encoding="utf-8")
+    # Same participants as ``one.txt``: this is a later snapshot of one chat, not
+    # a different conversation.
     second = tmp_path / "two.txt"
-    second.write_text("01/05/24, 10:00 - Alice: alpha\n", encoding="utf-8")
+    second.write_text("01/05/24, 10:00 - Alice: alpha\n"
+                      "01/05/24, 10:02 - Bob: gamma\n", encoding="utf-8")
     unrelated = tmp_path / "three.txt"
     unrelated.write_text("02/05/24, 10:00 - Carol: something else entirely\n",
                          encoding="utf-8")
