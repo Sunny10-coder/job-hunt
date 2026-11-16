@@ -99,8 +99,11 @@ def render(report: dict[str, Any], theme: str = "graphite") -> str:
   table {{ width: 100%; border-collapse: collapse; font-size: 12.5px; }}
   .table-wrap {{ overflow-x: auto; border: 1px solid {palette['border']};
     border-radius: 12px; }}
-  th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid {palette['border']};
-    vertical-align: top; }}
+  th, td {{ text-align: start; unicode-bidi: plaintext; padding: 8px 10px;
+    border-bottom: 1px solid {palette['border']}; vertical-align: top; }}
+  /* Imported evidence decides its own direction: Arabic/Hebrew cells and
+     paragraphs read right-to-left instead of being forced LTR. */
+  .prose, .note {{ unicode-bidi: plaintext; text-align: start; }}
   th {{ background: rgba(255,255,255,0.03); font-size: 11px; text-transform: uppercase;
     letter-spacing: .06em; color: {palette['muted']}; }}
   tr:last-child td {{ border-bottom: none; }}

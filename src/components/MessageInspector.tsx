@@ -64,7 +64,7 @@ export function MessageInspector({
               {data.has_media ? <Badge tone="teal">media</Badge> : null}
               {data.bookmark ? <Badge tone="amber">bookmarked</Badge> : null}
             </div>
-            <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+            <p dir="auto" className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
               {data.body || <span className="text-muted">(no text content)</span>}
             </p>
             <p className="mt-2 text-[11px] text-muted">
@@ -106,7 +106,7 @@ export function MessageInspector({
                   <p className="text-[11px] text-amber">
                     version {version.version} · observed {dateTime(version.observed_at)}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-ink">{version.body}</p>
+                  <p dir="auto" className="mt-1 whitespace-pre-wrap text-[12.5px] text-ink">{version.body}</p>
                 </div>
               ))}
             </section>
@@ -223,7 +223,7 @@ export function MessageInspector({
               {data.notes.length === 0 ? <p className="text-[11px] text-muted">No notes on this message.</p> : null}
               {data.notes.map((item) => (
                 <div key={item.id} className="surface-muted p-2.5">
-                  <p className="whitespace-pre-wrap text-[12px] text-ink">{item.body}</p>
+                  <p dir="auto" className="whitespace-pre-wrap text-[12px] text-ink">{item.body}</p>
                   <p className="mt-1 text-[10.5px] text-muted">
                     {item.author} · {dateTime(item.created_at)}
                   </p>
@@ -281,7 +281,7 @@ function Info({ label, value, mono }: { label: string; value: string; mono?: boo
   return (
     <div className="surface-muted px-2.5 py-1.5">
       <p className="text-[9.5px] uppercase tracking-[0.08em] text-muted">{label}</p>
-      <p className={`truncate text-[12px] text-ink ${mono ? "mono" : ""}`} title={value}>
+      <p dir="auto" className={`truncate text-[12px] text-ink ${mono ? "mono" : ""}`} title={value}>
         {value}
       </p>
     </div>

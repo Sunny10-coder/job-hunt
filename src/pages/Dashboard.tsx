@@ -135,7 +135,7 @@ export function Dashboard() {
                             {contact.display_name.slice(0, 2).toUpperCase()}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[12.5px] text-ink">{contact.display_name}</span>
+                            <span dir="auto" className="block truncate text-[12.5px] text-ink">{contact.display_name}</span>
                             <span className="block text-[10.5px] text-muted">
                               {num(contact.messages)} messages · {num(contact.media_messages)} media
                             </span>
@@ -158,7 +158,7 @@ export function Dashboard() {
                           onClick={() => navigate(`/cases/${caseId}/explorer?c=${conversation.id}`)}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[12.5px] text-ink">{conversation.title}</span>
+                            <span dir="auto" className="truncate text-[12.5px] text-ink">{conversation.title}</span>
                             <Badge tone={conversation.kind === "group" ? "teal" : "muted"}>{conversation.kind}</Badge>
                           </div>
                           <p className="mt-0.5 truncate text-[11px] text-muted">
@@ -211,7 +211,7 @@ export function Dashboard() {
                       {data.notes.slice(0, 3).map((note) => (
                         <div key={note.id} className="surface-muted px-2.5 py-2">
                           <p className="text-[10.5px] text-teal">investigation note · {dateTime(note.created_at)}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{note.body}</p>
+                          <p dir="auto" className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{note.body}</p>
                         </div>
                       ))}
                       {data.bookmarks.length === 0 && data.notes.length === 0 ? (

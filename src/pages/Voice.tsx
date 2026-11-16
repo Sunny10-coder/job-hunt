@@ -86,7 +86,7 @@ export function VoicePage() {
           {(audioApi.data?.items ?? []).map((item) => (
             <div key={item.id} className="border-b border-line/50 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[12px] text-ink">{item.file_name}</span>
+                <span dir="auto" className="truncate text-[12px] text-ink">{item.file_name}</span>
                 {item.duration_ms ? <Badge>{(item.duration_ms / 1000).toFixed(1)}s</Badge> : null}
               </div>
               <audio controls preload="none" className="mt-1 h-8 w-full" src={withToken(`/api/cases/${caseId}/media/${item.id}/file`)} />
@@ -135,7 +135,7 @@ export function VoicePage() {
                   </Button>
                 }
               >
-                <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink">{transcript.text || "(empty transcript)"}</p>
+                <p dir="auto" className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink">{transcript.text || "(empty transcript)"}</p>
                 <p className="mt-2 text-[10.5px] text-muted">
                   {transcript.sent_at_utc ? `${transcript.sender_raw} · ${dateTime(transcript.sent_at_utc)}` : "not linked to a message"}
                   {transcript.conversation ? ` · ${transcript.conversation}` : ""}

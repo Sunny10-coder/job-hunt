@@ -123,7 +123,7 @@ export function AssistantPage() {
                 <article key={answer.id} className="space-y-2">
                   <div className="flex justify-end">
                     <div className="bubble-out max-w-[80%] px-3 py-2">
-                      <p className="text-[12.5px] text-ink">{answer.question}</p>
+                      <p dir="auto" className="text-[12.5px] text-ink">{answer.question}</p>
                     </div>
                   </div>
                   <Panel
@@ -145,7 +145,7 @@ export function AssistantPage() {
                     ) : null}
 
                     {answer.answer ? (
-                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink">{answer.answer}</p>
+                      <p dir="auto" className="prose-chat whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink">{answer.answer}</p>
                     ) : null}
 
                     {answer.invalid_citations.length > 0 ? (
@@ -167,14 +167,14 @@ export function AssistantPage() {
                               className="surface-muted w-full px-2.5 py-1.5 text-left transition hover:border-accent/40"
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-[11px] text-accent">
+                                <span dir="auto" className="text-[11px] text-accent">
                                   {citation.marker ?? "[M]"} {citation.sender ?? ""}
                                 </span>
                                 <span className="text-[10px] text-muted">
                                   {citation.sent_at_utc ? dateTime(citation.sent_at_utc) : ""} · score {citation.score}
                                 </span>
                               </div>
-                              <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{citation.snippet}</p>
+                              <p dir="auto" className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{citation.snippet}</p>
                             </button>
                           ))}
                         </div>
@@ -192,12 +192,12 @@ export function AssistantPage() {
                               className="surface-muted w-full px-2.5 py-1.5 text-left transition hover:border-accent/40"
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-[11px] text-accent">{record.sender ?? ""}</span>
+                                <span dir="auto" className="text-[11px] text-accent">{record.sender ?? ""}</span>
                                 <span className="text-[10px] text-muted">
                                   {record.sent_at_utc ? dateTime(record.sent_at_utc) : ""}
                                 </span>
                               </div>
-                              <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{record.snippet}</p>
+                              <p dir="auto" className="mt-0.5 line-clamp-2 text-[11.5px] text-ink">{record.snippet}</p>
                             </button>
                           ))}
                         </div>

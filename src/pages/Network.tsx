@@ -110,7 +110,7 @@ export function NetworkPage() {
             {selected ? (
               <div className="space-y-2 p-2">
                 <div>
-                  <p className="text-[12.5px] font-medium text-ink">{selected.label}</p>
+                  <p dir="auto" className="text-[12.5px] font-medium text-ink">{selected.label}</p>
                   <Badge tone={selected.kind === "topic" ? "teal" : "accent"}>{selected.kind}</Badge>
                 </div>
                 <p className="text-[11px] text-muted">weight {num(selected.weight)}</p>

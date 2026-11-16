@@ -193,7 +193,7 @@ export function CaseManagement() {
                   {(bookmarksApi.data ?? []).map((bookmark) => (
                     <div key={bookmark.id} className="px-3 py-2">
                       <p className="text-[11px] text-amber">{bookmark.label || "bookmarked"}</p>
-                      <p className="line-clamp-2 text-[11.5px] text-ink">{bookmark.body}</p>
+                      <p dir="auto" className="line-clamp-2 text-[11.5px] text-ink">{bookmark.body}</p>
                       <p className="text-[10px] text-muted">{bookmark.conversation_title} · {dateTime(bookmark.sent_at_utc)}</p>
                     </div>
                   ))}
@@ -269,7 +269,7 @@ export function CaseManagement() {
               <div className="space-y-2">
                 {(notesApi.data ?? []).map((item) => (
                   <div key={item.id} className="rounded-lg border border-line bg-elevated/50 p-2.5">
-                    <p className="whitespace-pre-wrap text-[12px] text-ink">{item.body}</p>
+                    <p dir="auto" className="whitespace-pre-wrap text-[12px] text-ink">{item.body}</p>
                     <p className="mt-1 text-[10px] text-muted">{item.author} · {dateTime(item.created_at)}</p>
                   </div>
                 ))}

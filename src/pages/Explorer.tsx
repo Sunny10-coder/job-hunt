@@ -155,10 +155,10 @@ export function Explorer() {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[12.5px] font-medium text-ink">{item.title}</span>
+                  <span dir="auto" className="truncate text-[12.5px] font-medium text-ink">{item.title}</span>
                   {item.kind === "group" ? <Badge tone="teal">group</Badge> : null}
                 </div>
-                <p className="mt-0.5 truncate text-[11px] text-muted">
+                <p dir="auto" className="mt-0.5 truncate text-[11px] text-muted">
                   {item.last_sender ? `${item.last_sender}: ` : ""}
                   {truncate(item.last_message ?? "", 54) || "—"}
                 </p>
@@ -176,7 +176,7 @@ export function Explorer() {
         <section className="flex min-h-0 flex-col bg-bg">
           <header className="flex items-center justify-between border-b border-line px-4 py-2">
             <div>
-              <p className="text-[12.5px] font-semibold text-ink">{conversation?.title ?? "Select a conversation"}</p>
+              <p dir="auto" className="text-[12.5px] font-semibold text-ink">{conversation?.title ?? "Select a conversation"}</p>
               <p className="text-[10.5px] text-muted">
                 {conversation
                   ? `${num(conversation.message_count)} messages · ${num(conversation.media_count)} media · ${dateTime(conversation.first_at)} → ${dateTime(conversation.last_at)}`
@@ -215,7 +215,7 @@ export function Explorer() {
                       </div>
                     ) : null}
                     {message.is_system ? (
-                      <div className="bubble-system">
+                      <div dir="auto" className="bubble-system">
                         <ShieldQuestion className="mr-1 inline h-3 w-3" />
                         {message.body || "(system notice)"}
                       </div>
@@ -223,14 +223,14 @@ export function Explorer() {
                       <div className={`group flex ${isOwner ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[78%] ${matches ? "ring-1 ring-amber/60" : ""}`}>
                           <div className="mb-0.5 flex items-center gap-1.5 px-1 text-[10px] text-muted">
-                            <span className="font-medium text-ink/80">{message.sender_raw || "unknown"}</span>
+                            <span dir="auto" className="font-medium text-ink/80">{message.sender_raw || "unknown"}</span>
                             <span>{timeOnly(message.sent_at_utc)}</span>
                             {message.is_edited ? <Badge tone="amber">edited</Badge> : null}
                             {message.is_deleted ? <Badge tone="danger">deleted</Badge> : null}
                             {message.has_media ? <Badge tone="teal">{message.media_ref ?? "media"}</Badge> : null}
                           </div>
                           <div className={isOwner ? "bubble-out" : "bubble-in"}>
-                            <p className={`whitespace-pre-wrap break-words text-[12.5px] leading-relaxed ${message.is_deleted ? "italic text-muted" : "text-ink"}`}>
+                            <p dir="auto" className={`whitespace-pre-wrap break-words text-[12.5px] leading-relaxed ${message.is_deleted ? "italic text-muted" : "text-ink"}`}>
                               {message.body || <span className="text-muted">(no text)</span>}
                             </p>
                           </div>

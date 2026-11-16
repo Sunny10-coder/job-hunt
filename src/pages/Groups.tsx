@@ -59,7 +59,7 @@ export function GroupsPage() {
               }}
               className={`w-full border-b border-line/50 px-3 py-2 text-left hover:bg-elevated/60 ${selected === group.id ? "bg-elevated" : ""}`}
             >
-              <p className="truncate text-[12.5px] text-ink">{group.title}</p>
+              <p dir="auto" className="truncate text-[12.5px] text-ink">{group.title}</p>
               <p className="text-[10.5px] text-muted">
                 {num(group.message_count)} messages · {num(group.participants ?? 0)} participants
               </p>

@@ -188,14 +188,14 @@ export function SearchPage() {
               >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge tone="accent">{result.sender_raw}</Badge>
-                  <span className="text-[10.5px] text-muted">{result.conversation}</span>
+                  <span dir="auto" className="text-[10.5px] text-muted">{result.conversation}</span>
                   <span className="text-[10.5px] text-muted">· {dateTime(result.sent_at_utc)}</span>
                   {result.has_media ? <Badge tone="teal">media</Badge> : null}
                   {result.is_deleted ? <Badge tone="danger">deleted</Badge> : null}
                   {result.is_edited ? <Badge tone="amber">edited</Badge> : null}
                   {result.parse_confidence < 0.8 ? <Badge tone="amber">low confidence</Badge> : null}
                 </div>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-ink">
+                <p dir="auto" className="mt-1 text-[12.5px] leading-relaxed text-ink">
                   {splitHighlights(result.snippet).map((part, index) =>
                     part.hit ? (
                       <mark key={index}>{part.text}</mark>

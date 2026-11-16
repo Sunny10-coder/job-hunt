@@ -116,7 +116,7 @@ export function MediaPage() {
                     )}
                   </div>
                   <div className="p-2">
-                    <p className="truncate text-[11.5px] text-ink" title={item.file_name}>
+                    <p dir="auto" className="truncate text-[11.5px] text-ink" title={item.file_name}>
                       {item.file_name}
                     </p>
                     <p className="text-[10px] text-muted">
@@ -195,7 +195,7 @@ export function MediaPage() {
                 <div className="divide-y divide-line/60">
                   {missingApi.data.unlinked_files.map((file) => (
                     <div key={file.id} className="px-3 py-2">
-                      <p className="truncate text-[11.5px] text-ink">{file.file_name}</p>
+                      <p dir="auto" className="truncate text-[11.5px] text-ink">{file.file_name}</p>
                       <p className="text-[10.5px] text-muted">
                         {file.media_type} · {bytes(file.size_bytes)} — association would be a guess, so none is recorded.
                       </p>

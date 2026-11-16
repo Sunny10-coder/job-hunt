@@ -74,7 +74,7 @@ export function ContactsPage() {
               className={`w-full border-b border-line/50 px-3 py-2 text-left hover:bg-elevated/60 ${selected === contact.id ? "bg-elevated" : ""}`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[12.5px] text-ink">{contact.display_name}</span>
+                <span dir="auto" className="truncate text-[12.5px] text-ink">{contact.display_name}</span>
                 {contact.is_self ? <Badge tone="accent">owner</Badge> : null}
               </div>
               <p className="text-[10.5px] text-muted">
@@ -127,7 +127,7 @@ export function ContactsPage() {
                 <Panel title="Groups observed in" dense>
                   <div className="space-y-1 p-2">
                     {profileApi.data.groups.map((group) => (
-                      <p key={group.id} className="truncate text-[11.5px] text-ink">
+                      <p key={group.id} dir="auto" className="truncate text-[11.5px] text-ink">
                         {group.title}
                       </p>
                     ))}

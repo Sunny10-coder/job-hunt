@@ -153,3 +153,30 @@ mark,
 .hl {
   @apply rounded bg-amber/25 px-0.5 text-amber;
 }
+
+/* --------------------------------------------------------------------------
+   Bidirectional content
+
+   Imported evidence decides its own direction. `unicode-bidi: plaintext`
+   resolves each paragraph from its first strong character, and `start`
+   alignment then follows that resolved direction, so Arabic and Hebrew read
+   right-to-left inside the LTR workstation without flipping the layout.
+   `dir="auto"` is set on the individual content elements as well, which also
+   fixes truncation ellipsis and wrapping for those blocks.
+   -------------------------------------------------------------------------- */
+.bubble-in,
+.bubble-out,
+.bubble-system {
+  unicode-bidi: plaintext;
+}
+.bubble-in p,
+.bubble-out p,
+.prose-chat {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+/* Table cells carry chat-derived text (participant names, subjects, snippets). */
+.data-table td {
+  unicode-bidi: plaintext;
+  text-align: start;
+}

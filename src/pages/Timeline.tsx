@@ -125,13 +125,13 @@ export function TimelinePage() {
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-[11.5px] text-ink">{event.title}</span>
+                        <span dir="auto" className="truncate text-[11.5px] text-ink">{event.title}</span>
                         <Badge tone={event.kind === "import" ? "amber" : event.kind === "group_event" ? "teal" : "muted"}>
                           {event.kind.replace("_", " ")}
                         </Badge>
                       </div>
                       {event.detail ? (
-                        <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-muted">
+                        <p dir="auto" className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-muted">
                           {truncate(event.detail, 180)}
                         </p>
                       ) : null}
