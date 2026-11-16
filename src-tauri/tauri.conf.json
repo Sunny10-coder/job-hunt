@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WhatsApp Forensic Studio AI",
+  "version": "1.0.0",
+  "identifier": "studio.forensic.whatsapp",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "WhatsApp Forensic Studio AI",
+        "width": 1480,
+        "height": 940,
+        "minWidth": 1180,
+        "minHeight": 720,
+        "resizable": true,
+        "maximizable": true,
+        "fullscreen": false,
+        "center": true,
+        "theme": "Dark",
+        "backgroundColor": "#0b0f14",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data: blob: http://127.0.0.1:*; media-src 'self' asset: blob: http://127.0.0.1:*; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "externalBin": ["binaries/wfs-engine"],
+    "resources": [],
+    "publisher": "WhatsApp Forensic Studio",
+    "copyright": "Local-first forensic analysis. No telemetry, no cloud.",
+    "category": "DeveloperTool",
+    "shortDescription": "Offline WhatsApp evidence analysis workstation",
+    "longDescription": "WhatsApp Forensic Studio AI imports authorised WhatsApp exports, preserves originals with SHA-256 provenance, and provides search, analytics, timelines, recovery indicators, media analysis, local AI assistance and forensic reporting. All processing stays on the local computer.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
+      },
+      "wix": {
+        "language": ["en-US"]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  }
+}

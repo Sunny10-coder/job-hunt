@@ -1,0 +1,10 @@
+12/31/23, 11:59 PM - Alice: Hello there
+01/01/24, 12:05 AM - Bob: Happy new year
+01/01/24, 12:05 AM - Bob: This is a second line
+that continues the message on a new line
+01/01/24, 12:07 AM - Alice: <Media omitted>
+01/01/24, 12:08 AM - Alice: image omitted
+01/01/24, 12:09 AM - Bob: This message was deleted
+01/01/24, 12:10 AM - Alice: Edited text <This message was edited>
+01/02/24, 9:30 AM - Alice: https://example.com/report
+01/02/24, 9:31 AM - Bob: mail me at bob@example.com or +1 (555) 010-9999

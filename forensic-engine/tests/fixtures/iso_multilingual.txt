@@ -1,0 +1,6 @@
+2024-01-05 08:00 - Alice: ISO date with dash separator
+2024-01-05 08:01 - Bob: Another format handled
+2024-01-06 23:59 - Alice: فارسی / العربية text mixed
+2024-01-07 00:05 - You: മലയാളം വരി
+2024-01-07 00:06 - You: हिंदी पंक्ति
+2024-01-07 00:07 - You: தமிழ் வரி

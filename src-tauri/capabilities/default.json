@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Least-privilege capability set for the main investigation window. Native file pickers and secret storage are reached through dedicated Rust commands, so no broad filesystem permission is granted to the webview.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "dialog:default",
+    "opener:allow-open-path",
+    "opener:allow-open-url"
+  ]
+}

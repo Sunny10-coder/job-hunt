@@ -1,0 +1,10 @@
+# Runtime dependencies of the forensic engine (Python 3.12, x64).
+# PyInstaller freezes these into the wfs-engine sidecar; end users never
+# install Python or these packages themselves.
+reportlab>=4.2,<5
+openpyxl>=3.1,<4
+Pillow>=10.4,<12
+cryptography>=43,<47
+
+# Test suite (development/CI only; harmless in a dev virtualenv)
+pytest>=8.3,<9

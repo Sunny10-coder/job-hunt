@@ -1,0 +1,5 @@
+[12/28/23, 9:12:05 PM] Priya: iOS style bracket timestamp
+[12/28/23, 9:13:00 PM] You: With seconds included
+[12/29/23, 7:02:11 AM] Priya: Second line of
+this multiline message
+[12/29/23, 7:03:00 AM] Priya: <attached: IMG-20231229-WA0001.jpg>
